@@ -60,6 +60,8 @@ export interface DashboardVehicle {
     plate: string | null;
     color: string | null;
     device: DashboardDevice | null;
+    /** True when this item is a standalone device (not linked to a vehicle). */
+    is_standalone_device?: boolean;
 }
 
 export interface HistoryPosition {

@@ -19,12 +19,17 @@ interface TagOption {
 
 interface MonitoringProps {
     vehicles: DashboardVehicle[];
+    standaloneDevices: DashboardVehicle[];
     tags: TagOption[];
     filterTagIds: number[];
 }
 
 export default function Monitoring() {
-    const { vehicles, tags = [], filterTagIds = [] } = usePage<MonitoringProps>().props;
+    const { vehicles, standaloneDevices = [], tags = [], filterTagIds = [] } = usePage<MonitoringProps>().props;
+    const mapItems = [
+        ...vehicles.filter((v) => v.device != null),
+        ...standaloneDevices.filter((d) => d.device != null),
+    ];
 
     const toggleTagFilter = (tagId: number) => {
         const next = filterTagIds.includes(tagId)
@@ -47,7 +52,7 @@ export default function Monitoring() {
                             </div>
                         }
                     >
-                        <MapMonitoring vehicles={vehicles} />
+                        <MapMonitoring vehicles={vehicles} standaloneDevices={standaloneDevices} />
                     </Suspense>
                     {tags.length > 0 && (
                         <div className="absolute top-4 left-4 z-[1000] rounded-xl border border-sidebar-border/70 bg-card/95 backdrop-blur shadow-lg p-3 max-h-64 overflow-y-auto">
@@ -66,32 +71,39 @@ export default function Monitoring() {
                             </div>
                         </div>
                     )}
-                    {vehicles.length > 0 && (
+                    {mapItems.length > 0 && (
                         <div className="absolute bottom-4 left-4 right-4 sm:right-auto sm:max-w-xs z-[1000] rounded-lg border border-sidebar-border/70 bg-card/95 backdrop-blur shadow-lg p-3 max-h-48 overflow-y-auto">
-                            <p className="text-xs font-semibold text-muted-foreground mb-2">Vehículos en tiempo real</p>
+                            <p className="text-xs font-semibold text-muted-foreground mb-2">Vehículos y dispositivos en tiempo real</p>
                             <ul className="space-y-1.5">
-                                {vehicles.map((v) => (
-                                    <li key={v.id} className="text-sm">
+                                {vehicles.filter((v) => v.device).map((v) => (
+                                    <li key={`v-${v.id}`} className="text-sm">
                                         <p className="font-medium">{v.name}</p>
                                         {v.plate && <p className="text-muted-foreground text-xs">{v.plate}</p>}
-                                        {v.device ? (
-                                            <p className="capitalize text-muted-foreground text-xs">
-                                                {v.device.status}
-                                                {v.device.last_recorded_at &&
-                                                    ` · ${new Date(v.device.last_recorded_at).toLocaleString()}`}
-                                            </p>
-                                        ) : (
-                                            <p className="text-muted-foreground text-xs">Sin dispositivo</p>
-                                        )}
+                                        <p className="capitalize text-muted-foreground text-xs">
+                                            {v.device!.status}
+                                            {v.device!.last_recorded_at &&
+                                                ` · ${new Date(v.device!.last_recorded_at).toLocaleString()}`}
+                                        </p>
+                                    </li>
+                                ))}
+                                {standaloneDevices.filter((d) => d.device).map((d) => (
+                                    <li key={`d-${d.device!.id}`} className="text-sm">
+                                        <p className="font-medium">Dispositivo: {d.name}</p>
+                                        <p className="text-muted-foreground text-xs">{d.device!.identifier}</p>
+                                        <p className="capitalize text-muted-foreground text-xs">
+                                            {d.device!.status}
+                                            {d.device!.last_recorded_at &&
+                                                ` · ${new Date(d.device!.last_recorded_at).toLocaleString()}`}
+                                        </p>
                                     </li>
                                 ))}
                             </ul>
                         </div>
                     )}
-                    {vehicles.length === 0 && (
+                    {mapItems.length === 0 && (
                         <div className="absolute bottom-4 left-4 right-4 sm:right-auto sm:max-w-sm z-[1000] rounded-lg border border-sidebar-border/70 bg-card/95 backdrop-blur shadow-lg p-3">
                             <p className="text-sm text-muted-foreground">
-                                No hay vehículos. Agrega vehículos y dispositivos para verlos en el mapa.
+                                No hay vehículos ni dispositivos con ubicación. Agrega vehículos o dispositivos para verlos en el mapa.
                             </p>
                         </div>
                     )}

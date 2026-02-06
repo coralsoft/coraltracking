@@ -5,9 +5,10 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Device;
 use App\Models\Position;
+use App\Models\User;
 use Illuminate\Http\Request;
 
-class BusLocationController extends Controller
+class VehicleLocationController extends Controller
 {
     public function __invoke(Request $request)
     {
@@ -16,21 +17,20 @@ class BusLocationController extends Controller
             'latitude' => 'required|numeric|between:-90,90',
             'longitude' => 'required|numeric|between:-180,180',
             'speed' => 'nullable|numeric|min:0',
+            'angle' => 'nullable|numeric|between:0,360',
         ]);
 
-        $device = Device::where('identifier', $validated['serial_number'])->first();
-
-        if (! $device) {
-            return response()->json([
-                'ok' => false,
-                'error' => 'device_not_found',
-                'message' => 'Device not found for provided serial_number.',
-            ], 404);
-        }
+        $defaultUserId = User::min('id');
+        $device = Device::firstOrCreate(
+            ['identifier' => $validated['serial_number']],
+            ['user_id' => $defaultUserId],
+        );
 
         $now = now();
         $speed = array_key_exists('speed', $validated) ? $validated['speed'] : null;
+        $angle = array_key_exists('angle', $validated) ? $validated['angle'] : null;
         $status = ($speed !== null && (float) $speed > 0) ? 'moving' : 'stopped';
+        $heading = $angle !== null ? (int) round((float) $angle) : null;
 
         $device->update([
             'last_latitude' => (float) $validated['latitude'],
@@ -38,6 +38,7 @@ class BusLocationController extends Controller
             'last_recorded_at' => $now,
             'status' => $status,
             'last_speed' => $speed !== null ? (float) $speed : null,
+            'last_heading' => $heading,
         ]);
 
         $position = Position::create([
@@ -46,7 +47,7 @@ class BusLocationController extends Controller
             'longitude' => (float) $validated['longitude'],
             'recorded_at' => $now,
             'speed' => $speed !== null ? (float) $speed : null,
-            'heading' => null,
+            'heading' => $heading,
         ]);
 
         return response()->json([
@@ -66,4 +67,3 @@ class BusLocationController extends Controller
         ]);
     }
 }
-

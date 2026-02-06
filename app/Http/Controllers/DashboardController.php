@@ -147,6 +147,39 @@ class DashboardController extends Controller
             ->all();
     }
 
+    /**
+     * Devices owned by the user that are not linked to any vehicle (for monitoring/history by device).
+     */
+    private function getStandaloneDevicesForUser(Request $request): array
+    {
+        return Device::where('user_id', $request->user()->id)
+            ->whereDoesntHave('vehicle')
+            ->orderBy('identifier')
+            ->get()
+            ->map(function (Device $d) {
+                return [
+                    'id' => $d->id,
+                    'name' => $d->name ?? $d->identifier,
+                    'plate' => null,
+                    'color' => null,
+                    'is_standalone_device' => true,
+                    'device' => [
+                        'id' => $d->id,
+                        'identifier' => $d->identifier,
+                        'name' => $d->name,
+                        'last_latitude' => $d->last_latitude ? (float) $d->last_latitude : null,
+                        'last_longitude' => $d->last_longitude ? (float) $d->last_longitude : null,
+                        'last_recorded_at' => $d->last_recorded_at?->toIso8601String(),
+                        'status' => $d->status,
+                        'last_speed' => $d->last_speed ? (float) $d->last_speed : null,
+                        'last_heading' => $d->last_heading,
+                    ],
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
     public function index(Request $request): Response
     {
         $vehicles = $this->getVehiclesForUser($request);
@@ -169,10 +202,12 @@ class DashboardController extends Controller
         $tagIds = array_map('intval', array_values((array) $tagIds));
 
         $vehicles = $this->getVehiclesForUser($request, $tagIds ?: null);
+        $standaloneDevices = $this->getStandaloneDevicesForUser($request);
         $tags = $this->getTagsForUser($request);
 
         return Inertia::render('monitoring', [
             'vehicles' => $vehicles,
+            'standaloneDevices' => $standaloneDevices,
             'tags' => $tags,
             'filterTagIds' => $tagIds,
         ]);
@@ -187,10 +222,12 @@ class DashboardController extends Controller
         $tagIds = array_map('intval', array_values((array) $tagIds));
 
         $vehicles = $this->getVehiclesForUser($request, $tagIds ?: null);
+        $standaloneDevices = $this->getStandaloneDevicesForUser($request);
         $tags = $this->getTagsForUser($request);
 
         return Inertia::render('history', [
             'vehicles' => $vehicles,
+            'standaloneDevices' => $standaloneDevices,
             'tags' => $tags,
             'filterTagIds' => $tagIds,
         ]);
@@ -206,8 +243,12 @@ class DashboardController extends Controller
             'date' => 'required|date',
         ]);
 
+        $user = $request->user();
         $device = Device::where('id', $request->device_id)
-            ->whereHas('vehicle', fn ($q) => $q->where('user_id', $request->user()->id))
+            ->where(function ($q) use ($user) {
+                $q->whereHas('vehicle', fn ($v) => $v->where('user_id', $user->id))
+                    ->orWhere('user_id', $user->id);
+            })
             ->firstOrFail();
 
         $date = $request->date;
@@ -228,10 +269,15 @@ class DashboardController extends Controller
             ]);
 
         return response()->json([
-            'vehicle' => [
+            'vehicle' => $device->vehicle ? [
                 'id' => $device->vehicle->id,
                 'name' => $device->vehicle->name,
                 'plate' => $device->vehicle->plate,
+            ] : null,
+            'device' => [
+                'id' => $device->id,
+                'identifier' => $device->identifier,
+                'name' => $device->name,
             ],
             'positions' => $positions,
         ]);

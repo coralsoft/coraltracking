@@ -31,12 +31,13 @@ interface TagOption {
 
 interface HistoryProps {
     vehicles: DashboardVehicle[];
+    standaloneDevices: DashboardVehicle[];
     tags: TagOption[];
     filterTagIds: number[];
 }
 
 export default function History() {
-    const { vehicles, tags = [], filterTagIds = [] } = usePage<HistoryProps>().props;
+    const { vehicles, standaloneDevices = [], tags = [], filterTagIds = [] } = usePage<HistoryProps>().props;
     const [historyDate, setHistoryDate] = useState(() =>
         new Date().toISOString().slice(0, 10),
     );
@@ -85,6 +86,16 @@ export default function History() {
     };
 
     const vehiclesWithDevice = vehicles.filter((v) => v.device != null);
+    const historyOptions = [
+        ...vehiclesWithDevice.map((v) => ({
+            deviceId: String(v.device!.id),
+            label: v.name + (v.plate ? ` (${v.plate})` : ''),
+        })),
+        ...standaloneDevices.filter((d) => d.device).map((d) => ({
+            deviceId: String(d.device!.id),
+            label: `Dispositivo: ${d.name}`,
+        })),
+    ];
     const selectedPosition = useMemo(
         () => (positions.length > 0 ? positions[Math.min(selectedIndex, positions.length - 1)] : null),
         [positions, selectedIndex],
@@ -105,7 +116,9 @@ export default function History() {
             const res = await fetch(url);
             const data = await res.json();
             setPositions(data.positions ?? []);
-            setHistoryVehicleName(data.vehicle?.name ?? '');
+            setHistoryVehicleName(
+                data.vehicle?.name ?? data.device?.name ?? data.device?.identifier ?? '',
+            );
         } catch {
             setPositions([]);
         } finally {
@@ -197,22 +210,18 @@ export default function History() {
                         </div>
                     </div>
                     <div className="space-y-2">
-                        <Label>Vehículo</Label>
+                        <Label>Vehículo o dispositivo</Label>
                         <Select
                             value={selectedDeviceId}
                             onValueChange={setSelectedDeviceId}
                         >
-                            <SelectTrigger className="w-48">
-                                <SelectValue placeholder="Seleccionar vehículo" />
+                            <SelectTrigger className="w-56">
+                                <SelectValue placeholder="Seleccionar vehículo o dispositivo" />
                             </SelectTrigger>
                             <SelectContent>
-                                {vehiclesWithDevice.map((v) => (
-                                    <SelectItem
-                                        key={v.id}
-                                        value={String(v.device!.id)}
-                                    >
-                                        {v.name}
-                                        {v.plate ? ` (${v.plate})` : ''}
+                                {historyOptions.map((opt) => (
+                                    <SelectItem key={opt.deviceId} value={opt.deviceId}>
+                                        {opt.label}
                                     </SelectItem>
                                 ))}
                             </SelectContent>
