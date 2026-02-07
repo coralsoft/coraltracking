@@ -47,6 +47,7 @@ export default function History() {
     const [loadingHistory, setLoadingHistory] = useState(false);
     const [selectedIndex, setSelectedIndex] = useState<number>(0);
     const [isPlaying, setIsPlaying] = useState(false);
+    const [showRoute, setShowRoute] = useState(true);
     const [routesByTag, setRoutesByTag] = useState<HistoryRoute[]>([]);
     const [loadingRoutesByTag, setLoadingRoutesByTag] = useState(false);
     const playTimer = useRef<number | null>(null);
@@ -339,6 +340,30 @@ export default function History() {
                     </div>
                 )}
 
+                {(positions.length > 0 || routesByTag.length > 0) && (
+                    <div className="flex items-center justify-end">
+                        <button
+                            type="button"
+                            onClick={() => setShowRoute((v) => !v)}
+                            className="flex items-center gap-2 text-xs font-medium text-muted-foreground"
+                        >
+                            <span>Mostrar ruta</span>
+                            <span
+                                className={[
+                                    'relative inline-flex h-5 w-9 items-center rounded-full transition-colors',
+                                    showRoute ? 'bg-primary' : 'bg-muted',
+                                ].join(' ')}
+                            >
+                                <span
+                                    className={[
+                                        'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+                                        showRoute ? 'translate-x-4' : 'translate-x-1',
+                                    ].join(' ')}
+                                />
+                            </span>
+                        </button>
+                    </div>
+                )}
                 <div className="h-[500px] w-full">
                     <Suspense
                         fallback={
@@ -358,6 +383,7 @@ export default function History() {
                                 setSelectedIndex(idx);
                             }}
                             routes={routesByTag.length > 0 ? routesByTag : undefined}
+                            showRoute={showRoute}
                         />
                     </Suspense>
                 </div>

@@ -16,6 +16,7 @@ Route::get('/', function () {
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
     Route::get('monitoring', [DashboardController::class, 'monitoring'])->name('monitoring');
+    Route::get('dashboard/monitoring-positions', [DashboardController::class, 'monitoringPositions'])->name('dashboard.monitoringPositions');
     Route::get('history', [DashboardController::class, 'history'])->name('history');
     Route::get('dashboard/positions', [DashboardController::class, 'positions'])->name('dashboard.positions');
     Route::get('dashboard/positions-by-tags', [DashboardController::class, 'positionsByTags'])->name('dashboard.positionsByTags');

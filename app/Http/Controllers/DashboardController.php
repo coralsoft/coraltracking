@@ -213,6 +213,26 @@ class DashboardController extends Controller
         ]);
     }
 
+    /**
+     * JSON endpoint for monitoring map polling (updates positions every 5s).
+     */
+    public function monitoringPositions(Request $request)
+    {
+        $tagIds = $request->input('tag_ids', []);
+        if (is_string($tagIds)) {
+            $tagIds = array_filter(explode(',', $tagIds));
+        }
+        $tagIds = array_map('intval', array_values((array) $tagIds));
+
+        $vehicles = $this->getVehiclesForUser($request, $tagIds ?: null);
+        $standaloneDevices = $this->getStandaloneDevicesForUser($request);
+
+        return response()->json([
+            'vehicles' => $vehicles,
+            'standaloneDevices' => $standaloneDevices,
+        ]);
+    }
+
     public function history(Request $request): Response
     {
         $tagIds = $request->input('tag_ids', []);

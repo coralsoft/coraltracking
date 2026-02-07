@@ -4,7 +4,7 @@ import AppLayout from '@/layouts/app-layout';
 import type { BreadcrumbItem } from '@/types';
 import type { DashboardVehicle } from '@/types';
 import { Head, router, usePage } from '@inertiajs/react';
-import { Suspense } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Dashboard', href: '/dashboard' },
@@ -24,11 +24,40 @@ interface MonitoringProps {
     filterTagIds: number[];
 }
 
+const POLL_INTERVAL_MS = 5000;
+
 export default function Monitoring() {
     const { vehicles, standaloneDevices = [], tags = [], filterTagIds = [] } = usePage<MonitoringProps>().props;
+    const [liveVehicles, setLiveVehicles] = useState<DashboardVehicle[]>(vehicles);
+    const [liveStandaloneDevices, setLiveStandaloneDevices] = useState<DashboardVehicle[]>(standaloneDevices);
+
+    useEffect(() => {
+        setLiveVehicles(vehicles);
+        setLiveStandaloneDevices(standaloneDevices);
+    }, [vehicles, standaloneDevices]);
+
+    useEffect(() => {
+        const fetchPositions = async () => {
+            try {
+                const params = new URLSearchParams();
+                filterTagIds.forEach((id) => params.append('tag_ids[]', String(id)));
+                const url = route('dashboard.monitoringPositions') + (params.toString() ? `?${params}` : '');
+                const res = await fetch(url);
+                const data = await res.json();
+                if (data.vehicles) setLiveVehicles(data.vehicles);
+                if (data.standaloneDevices) setLiveStandaloneDevices(data.standaloneDevices);
+            } catch {
+                // Ignore fetch errors (e.g. network)
+            }
+        };
+        const interval = setInterval(fetchPositions, POLL_INTERVAL_MS);
+        fetchPositions();
+        return () => clearInterval(interval);
+    }, [filterTagIds.join(',')]);
+
     const mapItems = [
-        ...vehicles.filter((v) => v.device != null),
-        ...standaloneDevices.filter((d) => d.device != null),
+        ...liveVehicles.filter((v) => v.device != null),
+        ...liveStandaloneDevices.filter((d) => d.device != null),
     ];
 
     const toggleTagFilter = (tagId: number) => {
@@ -52,7 +81,7 @@ export default function Monitoring() {
                             </div>
                         }
                     >
-                        <MapMonitoring vehicles={vehicles} standaloneDevices={standaloneDevices} />
+                        <MapMonitoring vehicles={liveVehicles} standaloneDevices={liveStandaloneDevices} />
                     </Suspense>
                     {tags.length > 0 && (
                         <div className="absolute top-4 left-4 z-[1000] rounded-xl border border-sidebar-border/70 bg-card/95 backdrop-blur shadow-lg p-3 max-h-64 overflow-y-auto">
@@ -75,7 +104,7 @@ export default function Monitoring() {
                         <div className="absolute bottom-4 left-4 right-4 sm:right-auto sm:max-w-xs z-[1000] rounded-lg border border-sidebar-border/70 bg-card/95 backdrop-blur shadow-lg p-3 max-h-48 overflow-y-auto">
                             <p className="text-xs font-semibold text-muted-foreground mb-2">Vehículos y dispositivos en tiempo real</p>
                             <ul className="space-y-1.5">
-                                {vehicles.filter((v) => v.device).map((v) => (
+                                {liveVehicles.filter((v) => v.device).map((v) => (
                                     <li key={`v-${v.id}`} className="text-sm">
                                         <p className="font-medium">{v.name}</p>
                                         {v.plate && <p className="text-muted-foreground text-xs">{v.plate}</p>}
@@ -86,7 +115,7 @@ export default function Monitoring() {
                                         </p>
                                     </li>
                                 ))}
-                                {standaloneDevices.filter((d) => d.device).map((d) => (
+                                {liveStandaloneDevices.filter((d) => d.device).map((d) => (
                                     <li key={`d-${d.device!.id}`} className="text-sm">
                                         <p className="font-medium">Dispositivo: {d.name}</p>
                                         <p className="text-muted-foreground text-xs">{d.device!.identifier}</p>
