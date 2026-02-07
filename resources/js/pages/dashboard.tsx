@@ -2,7 +2,7 @@ import { Button } from '@/components/ui/button';
 import AppLayout from '@/layouts/app-layout';
 import type { BreadcrumbItem } from '@/types';
 import type { DashboardVehicle } from '@/types';
-import type { VehicleStats } from '@/types';
+import type { VehicleStats, DeviceStats } from '@/types';
 import { Head, Link, usePage } from '@inertiajs/react';
 import { BarChart3, Gauge, History, LayoutGrid, MapPin, Route } from 'lucide-react';
 import { useState } from 'react';
@@ -15,15 +15,19 @@ interface DashboardProps {
     vehicles: DashboardVehicle[];
     vehicleStatsLast7Days: VehicleStats[];
     vehicleStatsLast30Days: VehicleStats[];
+    deviceStatsLast7Days: DeviceStats[];
+    deviceStatsLast30Days: DeviceStats[];
 }
 
 type StatsPeriod = '7' | '30';
 
 export default function Dashboard() {
-    const { vehicles, vehicleStatsLast7Days, vehicleStatsLast30Days } = usePage<DashboardProps>().props;
+    const { vehicles, vehicleStatsLast7Days, vehicleStatsLast30Days, deviceStatsLast7Days, deviceStatsLast30Days } = usePage<DashboardProps>().props;
     const [statsPeriod, setStatsPeriod] = useState<StatsPeriod>('30');
 
-    const stats = statsPeriod === '7' ? vehicleStatsLast7Days : vehicleStatsLast30Days;
+    const vehicleStats = statsPeriod === '7' ? vehicleStatsLast7Days : vehicleStatsLast30Days;
+    const deviceStats = statsPeriod === '7' ? deviceStatsLast7Days : deviceStatsLast30Days;
+    const hasAnyStats = vehicleStats.length > 0 || deviceStats.length > 0;
     const periodLabel = statsPeriod === '7' ? 'Últimos 7 días' : 'Últimos 30 días';
 
     return (
@@ -68,7 +72,7 @@ export default function Dashboard() {
                     <div className="flex flex-wrap items-center justify-between gap-4">
                         <h3 className="font-medium flex items-center gap-2">
                             <BarChart3 className="h-4 w-4" />
-                            Estadísticas por vehículo
+                            Estadísticas por vehículo y dispositivo
                         </h3>
                         <div className="flex gap-2">
                             <Button
@@ -88,21 +92,56 @@ export default function Dashboard() {
                         </div>
                     </div>
                     <p className="text-sm text-muted-foreground mt-1">{periodLabel}</p>
-                    {stats.length === 0 ? (
+                    {!hasAnyStats ? (
                         <p className="text-sm text-muted-foreground mt-4">
-                            No hay vehículos con dispositivo. Agrega vehículos y dispositivos para ver estadísticas.
+                            No hay vehículos con dispositivo ni dispositivos sin vehículo. Agrega vehículos y dispositivos para ver estadísticas.
                         </p>
                     ) : (
                         <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                            {stats.map((s) => (
+                            {vehicleStats.map((s) => (
                                 <div
-                                    key={s.vehicle_id}
+                                    key={`v-${s.vehicle_id}`}
                                     className="rounded-lg border border-sidebar-border/50 bg-muted/20 p-4"
                                 >
+                                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Vehículo</p>
                                     <p className="font-semibold">{s.vehicle_name}</p>
                                     {s.plate && (
                                         <p className="text-muted-foreground text-sm">{s.plate}</p>
                                     )}
+                                    <dl className="mt-3 space-y-2 text-sm">
+                                        <div className="flex items-center gap-2">
+                                            <Route className="h-4 w-4 text-muted-foreground shrink-0" />
+                                            <span className="text-muted-foreground">Distancia:</span>
+                                            <span className="font-medium">{s.total_km.toFixed(1)} km</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <Gauge className="h-4 w-4 text-muted-foreground shrink-0" />
+                                            <span className="text-muted-foreground">Vel. promedio:</span>
+                                            <span className="font-medium">
+                                                {s.avg_speed_kmh != null ? `${s.avg_speed_kmh.toFixed(1)} km/h` : '—'}
+                                            </span>
+                                        </div>
+                                        {s.max_speed_kmh != null && (
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-muted-foreground w-[calc(theme(spacing.4)+0.5rem)] shrink-0" />
+                                                <span className="text-muted-foreground">Vel. máxima:</span>
+                                                <span className="font-medium">{s.max_speed_kmh.toFixed(1)} km/h</span>
+                                            </div>
+                                        )}
+                                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                            <span>{s.positions_count} puntos registrados</span>
+                                        </div>
+                                    </dl>
+                                </div>
+                            ))}
+                            {deviceStats.map((s) => (
+                                <div
+                                    key={`d-${s.device_id}`}
+                                    className="rounded-lg border border-sidebar-border/50 bg-muted/20 p-4"
+                                >
+                                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Dispositivo sin vehículo</p>
+                                    <p className="font-semibold">{s.device_name}</p>
+                                    <p className="text-muted-foreground text-sm">{s.identifier}</p>
                                     <dl className="mt-3 space-y-2 text-sm">
                                         <div className="flex items-center gap-2">
                                             <Route className="h-4 w-4 text-muted-foreground shrink-0" />

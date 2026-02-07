@@ -17,17 +17,26 @@ interface TagOption {
     color: string | null;
 }
 
+const STATUS_OPTIONS: { value: string; label: string }[] = [
+    { value: '', label: 'Todos' },
+    { value: 'stopped', label: 'Detenidos' },
+    { value: 'moving', label: 'En movimiento' },
+    { value: 'online', label: 'En línea' },
+    { value: 'offline', label: 'Desconectados' },
+];
+
 interface MonitoringProps {
     vehicles: DashboardVehicle[];
     standaloneDevices: DashboardVehicle[];
     tags: TagOption[];
     filterTagIds: number[];
+    filterStatus?: string;
 }
 
 const POLL_INTERVAL_MS = 5000;
 
 export default function Monitoring() {
-    const { vehicles, standaloneDevices = [], tags = [], filterTagIds = [] } = usePage<MonitoringProps>().props;
+    const { vehicles, standaloneDevices = [], tags = [], filterTagIds = [], filterStatus = '' } = usePage<MonitoringProps>().props;
     const [liveVehicles, setLiveVehicles] = useState<DashboardVehicle[]>(vehicles);
     const [liveStandaloneDevices, setLiveStandaloneDevices] = useState<DashboardVehicle[]>(standaloneDevices);
 
@@ -41,6 +50,7 @@ export default function Monitoring() {
             try {
                 const params = new URLSearchParams();
                 filterTagIds.forEach((id) => params.append('tag_ids[]', String(id)));
+                if (filterStatus) params.set('status', filterStatus);
                 const url = route('dashboard.monitoringPositions') + (params.toString() ? `?${params}` : '');
                 const res = await fetch(url);
                 const data = await res.json();
@@ -53,7 +63,7 @@ export default function Monitoring() {
         const interval = setInterval(fetchPositions, POLL_INTERVAL_MS);
         fetchPositions();
         return () => clearInterval(interval);
-    }, [filterTagIds.join(',')]);
+    }, [filterTagIds.join(','), filterStatus]);
 
     const mapItems = [
         ...liveVehicles.filter((v) => v.device != null),
@@ -64,7 +74,16 @@ export default function Monitoring() {
         const next = filterTagIds.includes(tagId)
             ? filterTagIds.filter((id) => id !== tagId)
             : [...filterTagIds, tagId];
-        router.get(route('monitoring'), next.length > 0 ? { tag_ids: next } : {}, { preserveScroll: true });
+        const query: Record<string, unknown> = next.length > 0 ? { tag_ids: next } : {};
+        if (filterStatus) query.status = filterStatus;
+        router.get(route('monitoring'), query, { preserveScroll: true });
+    };
+
+    const setStatusFilter = (status: string) => {
+        const query: Record<string, unknown> = {};
+        if (filterTagIds.length > 0) query.tag_ids = filterTagIds;
+        if (status) query.status = status;
+        router.get(route('monitoring'), query, { preserveScroll: true });
     };
 
     return (
@@ -83,23 +102,44 @@ export default function Monitoring() {
                     >
                         <MapMonitoring vehicles={liveVehicles} standaloneDevices={liveStandaloneDevices} />
                     </Suspense>
-                    {tags.length > 0 && (
-                        <div className="absolute top-4 left-4 z-[1000] rounded-xl border border-sidebar-border/70 bg-card/95 backdrop-blur shadow-lg p-3 max-h-64 overflow-y-auto">
-                            <p className="text-xs font-semibold text-muted-foreground mb-2">Filtrar por etiquetas</p>
-                            <p className="text-[11px] text-muted-foreground mb-2">Haz clic para mostrar solo vehículos con esa etiqueta.</p>
-                            <div className="flex flex-wrap gap-2">
-                                {tags.map((tag) => (
-                                    <TagChip
-                                        key={tag.id}
-                                        label={tag.name}
-                                        color={tag.color}
-                                        selected={filterTagIds.includes(tag.id)}
-                                        onClick={() => toggleTagFilter(tag.id)}
-                                    />
+                    <div className="absolute top-4 left-4 z-[1000] rounded-xl border border-sidebar-border/70 bg-card/95 backdrop-blur shadow-lg p-3 max-h-80 overflow-y-auto space-y-3">
+                        <div>
+                            <p className="text-xs font-semibold text-muted-foreground mb-2">Estado</p>
+                            <div className="flex flex-wrap gap-1.5">
+                                {STATUS_OPTIONS.map((opt) => (
+                                    <button
+                                        key={opt.value || 'all'}
+                                        type="button"
+                                        onClick={() => setStatusFilter(opt.value)}
+                                        className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+                                            (opt.value === '' && !filterStatus) || (opt.value === filterStatus)
+                                                ? 'bg-primary text-primary-foreground'
+                                                : 'bg-muted/60 text-muted-foreground hover:bg-muted'
+                                        }`}
+                                    >
+                                        {opt.label}
+                                    </button>
                                 ))}
                             </div>
                         </div>
-                    )}
+                        {tags.length > 0 && (
+                            <div>
+                                <p className="text-xs font-semibold text-muted-foreground mb-2">Etiquetas</p>
+                                <p className="text-[11px] text-muted-foreground mb-2">Haz clic para filtrar por etiqueta.</p>
+                                <div className="flex flex-wrap gap-2">
+                                    {tags.map((tag) => (
+                                        <TagChip
+                                            key={tag.id}
+                                            label={tag.name}
+                                            color={tag.color}
+                                            selected={filterTagIds.includes(tag.id)}
+                                            onClick={() => toggleTagFilter(tag.id)}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
                     {mapItems.length > 0 && (
                         <div className="absolute bottom-4 left-4 right-4 sm:right-auto sm:max-w-xs z-[1000] rounded-lg border border-sidebar-border/70 bg-card/95 backdrop-blur shadow-lg p-3 max-h-48 overflow-y-auto">
                             <p className="text-xs font-semibold text-muted-foreground mb-2">Vehículos y dispositivos en tiempo real</p>

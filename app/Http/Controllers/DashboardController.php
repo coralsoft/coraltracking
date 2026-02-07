@@ -97,7 +97,65 @@ class DashboardController extends Controller
         return $stats;
     }
 
-    private function getVehiclesForUser(Request $request, ?array $tagIds = null): array
+    /**
+     * @return array<int, array{device_id: int, device_name: string, identifier: string, total_km: float, avg_speed_kmh: float|null, max_speed_kmh: float|null, positions_count: int}>
+     */
+    private function getDeviceStatsForPeriod(Request $request, Carbon $from): array
+    {
+        $devices = Device::where('user_id', $request->user()->id)
+            ->whereDoesntHave('vehicle')
+            ->orderBy('identifier')
+            ->get();
+
+        $stats = [];
+        foreach ($devices as $device) {
+            $positions = Position::where('device_id', $device->id)
+                ->where('recorded_at', '>=', $from)
+                ->orderBy('recorded_at')
+                ->get(['latitude', 'longitude', 'speed']);
+
+            $totalKm = 0.0;
+            $speeds = [];
+            $maxSpeed = null;
+
+            for ($i = 1; $i < $positions->count(); $i++) {
+                $prev = $positions->get($i - 1);
+                $curr = $positions->get($i);
+                $totalKm += $this->haversineDistanceKm(
+                    (float) $prev->latitude,
+                    (float) $prev->longitude,
+                    (float) $curr->latitude,
+                    (float) $curr->longitude,
+                );
+            }
+
+            foreach ($positions as $p) {
+                if ($p->speed !== null) {
+                    $s = (float) $p->speed;
+                    $speeds[] = $s;
+                    $maxSpeed = $maxSpeed === null ? $s : max($maxSpeed, $s);
+                }
+            }
+
+            $avgSpeed = count($speeds) > 0 ? array_sum($speeds) / count($speeds) : null;
+
+            $stats[] = [
+                'device_id' => $device->id,
+                'device_name' => $device->name ?? $device->identifier,
+                'identifier' => $device->identifier,
+                'total_km' => round($totalKm, 2),
+                'avg_speed_kmh' => $avgSpeed !== null ? round($avgSpeed, 2) : null,
+                'max_speed_kmh' => $maxSpeed !== null ? round($maxSpeed, 2) : null,
+                'positions_count' => $positions->count(),
+            ];
+        }
+
+        return $stats;
+    }
+
+    private const DEVICE_STATUSES = ['offline', 'online', 'moving', 'stopped'];
+
+    private function getVehiclesForUser(Request $request, ?array $tagIds = null, ?array $statusFilter = null): array
     {
         $query = $request->user()
             ->vehicles()
@@ -105,6 +163,10 @@ class DashboardController extends Controller
 
         if (! empty($tagIds)) {
             $query->whereHas('tags', fn ($q) => $q->whereIn('tags.id', $tagIds));
+        }
+
+        if (! empty($statusFilter)) {
+            $query->whereHas('device', fn ($q) => $q->whereIn('status', $statusFilter));
         }
 
         return $query->get()
@@ -150,11 +212,16 @@ class DashboardController extends Controller
     /**
      * Devices owned by the user that are not linked to any vehicle (for monitoring/history by device).
      */
-    private function getStandaloneDevicesForUser(Request $request): array
+    private function getStandaloneDevicesForUser(Request $request, ?array $statusFilter = null): array
     {
-        return Device::where('user_id', $request->user()->id)
-            ->whereDoesntHave('vehicle')
-            ->orderBy('identifier')
+        $query = Device::where('user_id', $request->user()->id)
+            ->whereDoesntHave('vehicle');
+
+        if (! empty($statusFilter)) {
+            $query->whereIn('status', $statusFilter);
+        }
+
+        return $query->orderBy('identifier')
             ->get()
             ->map(function (Device $d) {
                 return [
@@ -183,13 +250,17 @@ class DashboardController extends Controller
     public function index(Request $request): Response
     {
         $vehicles = $this->getVehiclesForUser($request);
-        $statsLast7Days = $this->getVehicleStatsForPeriod($request, Carbon::now()->subDays(7));
-        $statsLast30Days = $this->getVehicleStatsForPeriod($request, Carbon::now()->subDays(30));
+        $vehicleStatsLast7Days = $this->getVehicleStatsForPeriod($request, Carbon::now()->subDays(7));
+        $vehicleStatsLast30Days = $this->getVehicleStatsForPeriod($request, Carbon::now()->subDays(30));
+        $deviceStatsLast7Days = $this->getDeviceStatsForPeriod($request, Carbon::now()->subDays(7));
+        $deviceStatsLast30Days = $this->getDeviceStatsForPeriod($request, Carbon::now()->subDays(30));
 
         return Inertia::render('dashboard', [
             'vehicles' => $vehicles,
-            'vehicleStatsLast7Days' => $statsLast7Days,
-            'vehicleStatsLast30Days' => $statsLast30Days,
+            'vehicleStatsLast7Days' => $vehicleStatsLast7Days,
+            'vehicleStatsLast30Days' => $vehicleStatsLast30Days,
+            'deviceStatsLast7Days' => $deviceStatsLast7Days,
+            'deviceStatsLast30Days' => $deviceStatsLast30Days,
         ]);
     }
 
@@ -201,8 +272,10 @@ class DashboardController extends Controller
         }
         $tagIds = array_map('intval', array_values((array) $tagIds));
 
-        $vehicles = $this->getVehiclesForUser($request, $tagIds ?: null);
-        $standaloneDevices = $this->getStandaloneDevicesForUser($request);
+        $statusFilter = $this->parseStatusFilter($request->input('status'));
+
+        $vehicles = $this->getVehiclesForUser($request, $tagIds ?: null, $statusFilter);
+        $standaloneDevices = $this->getStandaloneDevicesForUser($request, $statusFilter);
         $tags = $this->getTagsForUser($request);
 
         return Inertia::render('monitoring', [
@@ -210,7 +283,19 @@ class DashboardController extends Controller
             'standaloneDevices' => $standaloneDevices,
             'tags' => $tags,
             'filterTagIds' => $tagIds,
+            'filterStatus' => $request->input('status'),
         ]);
+    }
+
+    private function parseStatusFilter(mixed $input): ?array
+    {
+        if ($input === null || $input === '') {
+            return null;
+        }
+        $statuses = is_array($input) ? $input : [$input];
+        $valid = array_values(array_intersect($statuses, self::DEVICE_STATUSES));
+
+        return empty($valid) ? null : $valid;
     }
 
     /**
@@ -224,8 +309,10 @@ class DashboardController extends Controller
         }
         $tagIds = array_map('intval', array_values((array) $tagIds));
 
-        $vehicles = $this->getVehiclesForUser($request, $tagIds ?: null);
-        $standaloneDevices = $this->getStandaloneDevicesForUser($request);
+        $statusFilter = $this->parseStatusFilter($request->input('status'));
+
+        $vehicles = $this->getVehiclesForUser($request, $tagIds ?: null, $statusFilter);
+        $standaloneDevices = $this->getStandaloneDevicesForUser($request, $statusFilter);
 
         return response()->json([
             'vehicles' => $vehicles,

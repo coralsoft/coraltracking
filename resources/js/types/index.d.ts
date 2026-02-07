@@ -82,3 +82,13 @@ export interface VehicleStats {
     max_speed_kmh: number | null;
     positions_count: number;
 }
+
+export interface DeviceStats {
+    device_id: number;
+    device_name: string;
+    identifier: string;
+    total_km: number;
+    avg_speed_kmh: number | null;
+    max_speed_kmh: number | null;
+    positions_count: number;
+}
